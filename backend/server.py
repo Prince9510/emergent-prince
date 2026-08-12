@@ -118,6 +118,13 @@ async def current_admin(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=401, detail="Invalid session") from exc
 
 
+async def optional_admin(request: Request) -> Optional[Dict[str, Any]]:
+    try:
+        return await current_admin(request)
+    except HTTPException:
+        return None
+
+
 class UserOut(BaseModel):
     id: str
     email: EmailStr
@@ -640,8 +647,9 @@ async def delete_faq(item_id: str, admin: Dict[str, Any] = Depends(current_admin
 
 
 @api_router.get("/blog")
-async def get_blog() -> List[Dict[str, Any]]:
-    docs = await db.blog.find({}, {"_id": 0}).sort([("order", 1), ("created_at", -1)]).to_list(200)
+async def get_blog(include_drafts: bool = False, admin: Optional[Dict[str, Any]] = Depends(optional_admin)) -> List[Dict[str, Any]]:
+    query = {} if include_drafts and admin else {"active": True, "published": True}
+    docs = await db.blog.find(query, {"_id": 0}).sort([("order", 1), ("created_at", -1)]).to_list(200)
     return [clean_doc(doc) for doc in docs if doc]
 
 
@@ -677,11 +685,40 @@ async def delete_blog_post(item_id: str, admin: Dict[str, Any] = Depends(current
     return {"success": True, "message": "Post deleted"}
 
 
+class ContactStatusPayload(BaseModel):
+    status: str = Field(pattern="^(new|read|archived)$")
+
+
 @api_router.get("/dashboard")
 async def dashboard(admin: Dict[str, Any] = Depends(current_admin)) -> Dict[str, Any]:
     stats = {collection: await db[collection].count_documents({}) for collection in ["services", "projects", "gallery", "media", "testimonials", "blog", "team", "faqs"]}
+    stats["contact_submissions"] = await db.contact_submissions.count_documents({})
+    stats["unread_contacts"] = await db.contact_submissions.count_documents({"status": "new"})
     recent = await db.projects.find({}, {"_id": 0, "id": 1, "title": 1, "image_url": 1, "created_at": 1}).sort("created_at", -1).to_list(4)
     return {"stats": stats, "recent_projects": [clean_doc(item) for item in recent]}
+
+
+@api_router.get("/contact-submissions")
+async def get_contact_submissions(admin: Dict[str, Any] = Depends(current_admin)) -> List[Dict[str, Any]]:
+    docs = await db.contact_submissions.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return [clean_doc(doc) for doc in docs if doc]
+
+
+@api_router.put("/contact-submissions/{item_id}")
+async def update_contact_submission(item_id: str, payload: ContactStatusPayload, admin: Dict[str, Any] = Depends(current_admin)) -> Dict[str, Any]:
+    data = {"status": payload.status, "updated_at": now_iso()}
+    result = await db.contact_submissions.find_one_and_update({"id": item_id}, {"$set": data}, projection={"_id": 0}, return_document=True)
+    if not result:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    return clean_doc({**result, **data}) or {}
+
+
+@api_router.delete("/contact-submissions/{item_id}")
+async def delete_contact_submission(item_id: str, admin: Dict[str, Any] = Depends(current_admin)) -> Dict[str, Any]:
+    result = await db.contact_submissions.delete_one({"id": item_id})
+    if not result.deleted_count:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    return {"success": True, "message": "Submission deleted"}
 
 
 @api_router.post("/contact")

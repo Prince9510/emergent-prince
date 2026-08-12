@@ -30,6 +30,7 @@ Completed: public Home (with rotating testimonials band), About (with team grid)
 - 2026-03-10: Added JWT admin authentication, MongoDB seed content, CRUD APIs, local media upload, and responsive editorial design.
 - 2026-03-10: Fixed logout token revocation and hardened the media library empty/error flow after QA.
 - 2026-08-12: Added Testimonials (homepage carousel), Blog/Journal (listing + slug detail), Team (About page grid), and FAQs (grouped accordion) with full admin CRUD; AdminCrud now supports textarea and checkbox field types; dashboard stats extended to 8 resource counts.
+- 2026-08-12: Added Contact Inbox at /admin/inbox with sidebar unread badge, per-status filters (all/unread/read/archived), Reply/Mark/Archive/Delete actions and a dashboard banner for unread enquiries; MediaPicker component embedded in every image_url field of the CRUD modal with a live preview thumbnail; public /api/blog now hides drafts server-side (admin passes include_drafts=true); Journal and Gallery got public category/tag filter chips.
 
 ## Known Limitations
 - Gallery records reference image URLs; a media asset picker can be added later to connect uploaded media directly to content forms.

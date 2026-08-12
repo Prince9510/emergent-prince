@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 4 testing of Studio Voxel CMS — Contact Inbox, MediaPicker, public draft filtering, and Journal/Gallery category filters. Backend: 3/3 new pytest cases pass (drafts hidden from public /api/blog but visible with include_drafts+auth; contact-submissions GET/PUT/DELETE with 401/404/422 handling; dashboard.unread_contacts increments after a new /contact POST). Frontend: /gallery category chips (All + 3 categories) filter items correctly; /blog tag chips (All notes + 5 tags) filter posts; admin sidebar shows Inbox nav link with unread badge (initially '3'); dashboard-inbox-banner renders and links to /admin/inbox; /admin/inbox master-detail shell renders with the 4 filter chips (all/unread/read/archived), enquiry list, and detail pane; clicking an unread enquiry auto-marks it read (badge dropped 3→2, unread count 3→2) and reveals Reply/Mark as read/Archive/Delete actions with expected data-testids; MediaPicker opens over the admin CRUD modal (z-index correct), lists uploads, and populates image_url + preview thumbnail; admin Journal list continues to use include_drafts=true (all currently 'Live' because no draft posts exist post-cleanup).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Media library / MediaPicker preview", "issues": ["Only one uploaded media asset (qa.png) exists in the seed and it renders as a broken image in the picker grid because the image data is not a valid PNG. Uploading a real image resolves it; consider seeding a valid sample or improving broken-image fallback."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4.py",
+    "/app/test_reports/pytest/iter4.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py has grown to 741 lines with heavy repetition across 7 CRUD resources — worth extracting a generic CRUD factory to reduce duplication before adding more collections.",
+    "GET /api/blog uses optional_admin dependency which parses cookies/tokens on every anonymous public request; consider caching the negative-auth path or short-circuiting when no Authorization header/cookie is present to reduce overhead on the highest-traffic public endpoint.",
+    "ContactStatusPayload uses regex validation — good, but the PUT endpoint returns clean_doc({**result, **data}) which relies on find_one_and_update return_document=AFTER semantics; the current pymongo return_document=True is truthy but not the enum ReturnDocument.AFTER — verify updated status is actually returned (it does in the test, so likely fine, but fragile).",
+    "AdminLayout polls /api/dashboard every 60s + on every route change to refresh the unread badge; this pulls full dashboard stats (project list, all counts) — a dedicated lightweight /api/inbox/unread-count endpoint would be cheaper and avoid coupling the badge to the dashboard payload."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration4.py",
+    "/app/test_reports/pytest/iter4.xml",
+    "/app/test_reports/iteration_4.json"
+  ],
+  "success_rate": { "backend": "100% (3/3 new; prior 25 unchanged)", "frontend": "100% of iteration-4 flows executed" },
+  "test_credentials": "admin@studiovoxel.co / VoxelAdmin2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None persistent. Test creates a draft blog post + two contact submissions and cleans them up in the same test run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "New backend endpoints: GET/PUT/DELETE /api/contact-submissions (admin auth). GET /api/blog now filters by active+published unless include_drafts=true AND admin cookie/bearer present. Dashboard stats include contact_submissions + unread_contacts. Frontend testids of note: gallery-filter-chips, blog-filter-chips, admin-inbox-nav-link, admin-inbox-badge, admin-inbox-shell, admin-inbox-filter-{all|unread|read|archived}, admin-inbox-open-{n}, admin-inbox-reply-link, admin-inbox-mark-read/-mark-unread/-archive/-delete, dashboard-inbox-banner, admin-{collection}-image_url-picker, media-picker-modal, media-picker-item-{n}, field-image-preview img. AdminCrud fetches blog with include_drafts=true so admin sees drafts; blog table status column shows 'Draft'/'Hidden'/'Live'. Backend has 3 seeded blog posts (all published) and multiple test contact submissions with mixed statuses.",
+  "rca of the issue": "N/A — no defects encountered in the four new features."
+}
