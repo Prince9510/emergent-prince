@@ -1,0 +1,56 @@
+{
+  "project_name": "Studio Voxel - Architectural & Creative Design Firm",
+  "archetype": "Luxury & Swiss Minimalist / Architecture Studio",
+  "typography": {
+    "heading_font": "Outfit, sans-serif",
+    "body_font": "Plus Jakarta Sans, sans-serif",
+    "mono_font": "JetBrains Mono, monospace"
+  },
+  "colors": {
+    "primary": "#111111",
+    "secondary": "#2A2A2A",
+    "accent": "#C5A880",
+    "background": "#FAFAFA",
+    "card_bg": "#FFFFFF",
+    "text_primary": "#111111",
+    "text_muted": "#666666",
+    "border": "#E5E5E5"
+  },
+  "grids": {
+    "marketing_grid": "grid grid-cols-1 md:grid-cols-12 gap-8",
+    "dashboard_grid": "grid grid-cols-1 md:grid-cols-4 gap-6"
+  },
+  "components": [
+    "Navbar",
+    "HeroSection",
+    "ServicesBento",
+    "ProjectsShowcase",
+    "ProjectDetailView",
+    "GalleryLightbox",
+    "ContactForm",
+    "AdminDashboard",
+    "AdminServices",
+    "AdminProjects",
+    "AdminGallery",
+    "AdminMedia",
+    "AdminSettings"
+  ],
+  "image_urls": [
+    {
+      "category": "hero_architecture",
+      "url": "https://images.unsplash.com/photo-1602128110234-2d11c0aaadfe?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "description": "Minimal concrete architecture under open sky"
+    },
+    {
+      "category": "workspace_studio",
+      "url": "https://images.pexels.com/photos/4977448/pexels-photo-4977448.jpeg",
+      "description": "Material samples and architectural planning"
+    },
+    {
+      "category": "team_portrait",
+      "url": "https://images.unsplash.com/photo-1780733066654-eec89018be18?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "description": "Professional creative team"
+    }
+  ],
+  "instructions_to_main_agent": "Ensure every interactive element has a unique data-testid attribute in kebab-case. Use React Router for public and admin routes. Connect all CRUD operations securely with JWT authentication to FastAPI backend endpoints. Maintain strict adherence to Swiss minimalist typography and generous spacing."
+}
