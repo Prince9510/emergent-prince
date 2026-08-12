@@ -723,6 +723,61 @@ class ContactStatusPayload(BaseModel):
     status: str = Field(pattern="^(new|read|archived)$")
 
 
+class BulkIdsPayload(BaseModel):
+    ids: List[str] = Field(default_factory=list)
+
+
+class BulkTagPayload(BaseModel):
+    ids: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
+
+
+@api_router.post("/media/bulk-delete")
+async def bulk_delete_media(payload: BulkIdsPayload, admin: Dict[str, Any] = Depends(current_admin)) -> Dict[str, Any]:
+    if not payload.ids:
+        return {"success": True, "deleted": 0}
+    docs = await db.media.find({"id": {"$in": payload.ids}}, {"_id": 0}).to_list(1000)
+    for doc in docs:
+        file_path = UPLOAD_DIR / doc["filename"]
+        if file_path.exists():
+            file_path.unlink()
+    result = await db.media.delete_many({"id": {"$in": payload.ids}})
+    return {"success": True, "deleted": result.deleted_count}
+
+
+@api_router.post("/media/bulk-tag")
+async def bulk_tag_media(payload: BulkTagPayload, admin: Dict[str, Any] = Depends(current_admin)) -> Dict[str, Any]:
+    tags = [tag.strip() for tag in payload.tags if tag.strip()]
+    if not payload.ids or not tags:
+        return {"success": True, "updated": 0, "tags": tags}
+    result = await db.media.update_many({"id": {"$in": payload.ids}}, {"$addToSet": {"tags": {"$each": tags}}, "$set": {"updated_at": now_iso()}})
+    return {"success": True, "updated": result.modified_count, "tags": tags}
+
+
+@api_router.get("/analytics/contacts")
+async def contacts_analytics(admin: Dict[str, Any] = Depends(current_admin)) -> Dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    window_weeks = 6
+    start = now - timedelta(weeks=window_weeks - 1)
+    start_of_first_week = (start - timedelta(days=start.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    week_starts = [start_of_first_week + timedelta(weeks=i) for i in range(window_weeks)]
+    week_labels = [ws.strftime("%d %b") for ws in week_starts]
+    week_totals = [0] * window_weeks
+    type_counts: Dict[str, int] = {}
+    docs = await db.contact_submissions.find({"created_at": {"$gte": start_of_first_week.isoformat()}}, {"_id": 0, "project_type": 1, "created_at": 1}).to_list(4000)
+    for doc in docs:
+        try:
+            created = datetime.fromisoformat(str(doc["created_at"]).replace("Z", "+00:00"))
+        except (KeyError, ValueError):
+            continue
+        idx = min(window_weeks - 1, max(0, int((created - start_of_first_week).days // 7)))
+        week_totals[idx] += 1
+        key = (doc.get("project_type") or "Other").strip() or "Other"
+        type_counts[key] = type_counts.get(key, 0) + 1
+    top_types = sorted(({"project_type": k, "count": v} for k, v in type_counts.items()), key=lambda item: item["count"], reverse=True)[:5]
+    return {"weeks": [{"label": label, "total": total} for label, total in zip(week_labels, week_totals)], "top_types": top_types, "total": sum(week_totals)}
+
+
 @api_router.get("/dashboard")
 async def dashboard(admin: Dict[str, Any] = Depends(current_admin)) -> Dict[str, Any]:
     stats = {collection: await db[collection].count_documents({}) for collection in ["services", "projects", "gallery", "media", "testimonials", "blog", "team", "faqs"]}

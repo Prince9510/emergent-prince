@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 7 additive testing: bulk media actions (delete+tag), blog post live preview and contact analytics dashboard. Backend: 8/8 pytest tests pass (bulk-delete removes DB rows AND webp files, empty ids returns deleted:0, unauth 401, bulk-tag $addToSet dedups tags, empty tags returns updated:0, /api/analytics/contacts has correct 6-week shape and increments live when /api/contact is posted). Frontend: /admin/media shows checkboxes + bulk toolbar (Select all <-> Clear all toggle works, Add tag via prompt persists tags via API - verified 'brand','2026' set on card via GET /api/media). Blog edit modal exposes Show preview / Hide preview toggle that renders admin-blog-preview split panel with live title updates. Dashboard renders dashboard-analytics-section with total=4, 6 bars, and top project types list. Inbox and Blog list still render (no AdminCrud regression).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/media", "issues": ["Legacy 8-byte qa.png still present renders as broken thumbnail (noted in iter6). Consider startup cleanup."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration7.py",
+    "/app/test_reports/pytest/iter7.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py bulk_delete_media correctly unlinks files before deleting DB rows and is idempotent (empty ids short-circuits).",
+    "bulk_tag_media uses $addToSet with $each which prevents duplicate tags; verified with double-apply of same tag.",
+    "contacts_analytics builds 6 week buckets via floor((created-week_start).days/7); clamped to [0, window-1]. Correct handling of ISO timestamps with 'Z' suffix.",
+    "AdminCrud is now a very long single-line function (line 217). Readability suffers; recommend splitting into subcomponents (form fields, modal, table row) in a future refactor.",
+    "AdminMedia checkbox <label>/<span> intercepts pointer events on the native input, so page.check() fails in Playwright — tests must click the label with force=True. Not a user-facing bug but worth noting for future testers."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration7.py (new)"
+  ],
+  "success_rate": {"backend": "100% (8/8 pytest)", "frontend": "100% (bulk media toolbar, blog live preview, dashboard analytics all verified)"},
+  "test_credentials": "admin@studiovoxel.co / VoxelAdmin2026!",
+  "seed_data_creation": "Test uploaded images (TEST_bulkdel_a/b.jpg, TEST_bulktag.jpg) and a TEST_it7_analytics_* contact submission were created and cleaned up by the tests themselves.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 7 shipped bulk media actions, blog live preview, and contact analytics. All endpoints require admin auth (Bearer or cookie). When clicking media selection checkboxes in Playwright, click the label data-testid `admin-media-select-{n}` (with force=True) — not the input — because the custom-styled <span/> inside intercepts pointer events. Blog Edit uses data-testid `admin-blog-edit-{n}` (from AdminCrud); the preview toggle only appears for collection='blog' and only when editing an existing/new post. The AdminCrud component (App.js line 217) is a very long single line — grep for data-testid keys."
+}
