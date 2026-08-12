@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 6 retest of the /uploads routing bug from iteration_5. FIX VERIFIED. Backend now mounts StaticFiles at /api/uploads and upload_media stores url as /api/uploads/{filename}. Startup migration executed successfully (0 legacy /uploads rows remaining, 4 rows now on /api/uploads). All 9 pytest tests in test_iteration5.py pass, including a strengthened test that fetches the uploaded WebP via the PUBLIC REACT_APP_BACKEND_URL and asserts content-type=image/webp + RIFF/WEBP magic bytes. Admin /admin/media library grid renders migrated images correctly (all 3 real WebP thumbnails 1920x1440, content-type image/webp, HTTP 200). Public sanity endpoints /api/site/home, /api/projects, /api/blog all return 200; /api/dashboard correctly returns 401 without auth. No regressions.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/uploads/640158f1e28c495da1d9db84d5125b45.png",
+        "issue": "One pre-existing 8-byte file on disk (qa.png) renders as broken thumbnail on /admin/media. This is not a routing bug — ingress correctly serves it (HTTP 200, image/png). The file itself is corrupt/empty from an earlier test upload before the WebP conversion pipeline. Consider seeding cleanup to remove empty media rows on startup."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration5.py",
+    "/app/test_reports/pytest/iter6.xml"
+  ],
+  "action_items": [
+    "Optional: on backend startup, prune media DB rows whose on-disk file is <1KB or missing (cleans up the legacy 8-byte qa.png artifact)."
+  ],
+  "critical_code_review_comments": [
+    "server.py app.mount('/api/uploads', ...) — correct fix. Kubernetes ingress routes /api/* to backend so static files are now reachable externally.",
+    "server.py startup migration `db.media.update_many({'url': {'$regex': '^/uploads/'}}, [{'$set': {'url': {'$concat': ['/api', '$url']}}}])` — idempotent aggregation-pipeline update, safe to re-run. Verified 0 legacy rows remain.",
+    "upload_media stores item['url'] = f'/api/uploads/{filename}' — matches the mount path.",
+    "MediaPicker uses `${BACKEND_URL}${item.url}` which correctly composes to https://host/api/uploads/... — no frontend change needed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration5.py (changed the served-file assertion from localhost:8001 to BASE_URL and added URL-prefix + content-type assertions)"
+  ],
+  "success_rate": {"backend": "100% (9/9 pytest)", "frontend": "100% (admin/media grid renders migrated WebP via public ingress)"},
+  "test_credentials": "admin@studiovoxel.co / VoxelAdmin2026!",
+  "seed_data_creation": "Test uploads left behind by cleanup teardown removed; 4 media rows currently in DB (3 TEST_big.webp from a prior run + 1 legacy 8-byte qa.png).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Uploads are now served under /api/uploads/. The /uploads path (without /api) will still hit the SPA — do not use it. If tests need to verify externally, always use REACT_APP_BACKEND_URL + item.url (which already contains /api/uploads/). A single 8-byte qa.png remains as legacy noise on /admin/media.",
+  "rca of the issue": "Fixed. Root cause was that Kubernetes ingress routes only /api/* to backend port 8001, but StaticFiles was mounted at /uploads, so external requests hit the CRA SPA. Fix: mount changed to /api/uploads AND item.url now stored as /api/uploads/{filename}. A startup Mongo migration retro-prefixes any legacy /uploads/... URLs to /api/uploads/..., making existing data records work without manual intervention."
+}

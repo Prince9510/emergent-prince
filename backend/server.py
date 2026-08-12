@@ -1,4 +1,5 @@
 from datetime import datetime, timezone, timedelta
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import logging
@@ -9,6 +10,7 @@ import uuid
 
 import bcrypt
 import jwt
+from PIL import Image
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,7 +49,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 
 def now_iso() -> str:
@@ -336,6 +338,8 @@ async def startup() -> None:
     await db.users.create_index("email", unique=True)
     await db.projects.create_index("slug", unique=True)
     await db.blog.create_index("slug", unique=True)
+    # Migrate legacy media URLs (pre-ingress-fix) to /api/uploads/...
+    await db.media.update_many({"url": {"$regex": "^/uploads/"}}, [{"$set": {"url": {"$concat": ["/api", "$url"]}}}])
     await seed_admin()
     await seed_content()
 
@@ -468,6 +472,17 @@ async def get_project(slug: str) -> Dict[str, Any]:
     return clean_doc(project) or {}
 
 
+@api_router.get("/projects/{slug}/related")
+async def get_project_related(slug: str) -> Dict[str, Any]:
+    project = await db.projects.find_one({"slug": slug, "active": True}, {"_id": 0})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    posts = await db.blog.find({"active": True, "published": True}, {"_id": 0}).sort([("order", 1), ("created_at", -1)]).to_list(3)
+    testimonial = await db.testimonials.find_one({"active": True, "featured": True}, {"_id": 0}, sort=[("order", 1)])
+    other_projects = await db.projects.find({"active": True, "slug": {"$ne": slug}}, {"_id": 0}).sort([("order", 1), ("created_at", -1)]).to_list(3)
+    return {"posts": [clean_doc(post) for post in posts], "testimonial": clean_doc(testimonial), "projects": [clean_doc(proj) for proj in other_projects]}
+
+
 @api_router.post("/projects")
 async def create_project(payload: ProjectPayload, admin: Dict[str, Any] = Depends(current_admin)) -> Dict[str, Any]:
     data = {"id": new_id(), "slug": slugify(payload.title), **payload.model_dump(), "created_at": now_iso(), "updated_at": now_iso()}
@@ -538,10 +553,29 @@ async def upload_media(files: List[UploadFile] = File(...), admin: Dict[str, Any
         content = await upload.read()
         if len(content) > 8 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="Each image must be under 8 MB")
-        suffix = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[upload.content_type]
-        filename = f"{uuid.uuid4().hex}{suffix}"
-        (UPLOAD_DIR / filename).write_bytes(content)
-        item = {"id": new_id(), "filename": filename, "original_name": upload.filename or filename, "content_type": upload.content_type, "size": len(content), "url": f"/uploads/{filename}", "created_at": now_iso()}
+        try:
+            image = Image.open(BytesIO(content))
+            image.verify()
+            image = Image.open(BytesIO(content))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Uploaded file is not a valid image") from exc
+        if image.mode == "P":
+            image = image.convert("RGBA")
+        elif image.mode == "CMYK":
+            image = image.convert("RGB")
+        elif image.mode not in ("RGB", "RGBA", "L"):
+            image = image.convert("RGB")
+        max_dim = 1920
+        if image.width > max_dim or image.height > max_dim:
+            image.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+        buffer = BytesIO()
+        image.save(buffer, format="WEBP", quality=85, method=6)
+        webp_bytes = buffer.getvalue()
+        filename = f"{uuid.uuid4().hex}.webp"
+        (UPLOAD_DIR / filename).write_bytes(webp_bytes)
+        original_name = upload.filename or filename
+        base_name = original_name.rsplit(".", 1)[0][:120] + ".webp"
+        item = {"id": new_id(), "filename": filename, "original_name": base_name, "content_type": "image/webp", "size": len(webp_bytes), "original_size": len(content), "width": image.width, "height": image.height, "url": f"/api/uploads/{filename}", "created_at": now_iso()}
         await db.media.insert_one(item)
         created.append(clean_doc(item))
     return {"success": True, "items": created}

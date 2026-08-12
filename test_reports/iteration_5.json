@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 5 additive tests: Rich Text Editor for Journal, Related content on project detail, Pillow WebP image optimization, and enquiry toast. Backend: 9/9 pytest tests pass (related endpoint, WebP conversion + resize to 1920, non-image rejection, malformed image rejection, >8MB rejection, delete removes DB+file, auth required). Frontend: RTE toolbar has all 8 buttons (H2, H3, Bold, Italic, Blockquote, Bullet list, Link, Clear), Bold/H2 apply and HTML persists after save. Related-band section on /projects/shoreline-cabin renders testimonial + 3 journal posts + 2 other projects with correct testids. Admin media library lists uploaded .webp images. IMPORTANT: problem statement referenced slug 'react-cms-pro' which does not exist as a seeded project; real seeded slugs are house-for-a-long-summer, the-courtyard-office, shoreline-cabin.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "/uploads/{filename} (StaticFiles mount)",
+        "issue": "External Kubernetes ingress only routes /api/* to backend on :8001. The /uploads path is not prefixed with /api, so requests to https://<host>/uploads/xxx.webp hit the frontend SPA and return text/html (the React index.html) with status 200 instead of the WebP bytes. Uploaded media images will therefore appear broken/blank everywhere they are rendered on the public site (project image_url, blog image_url, gallery, testimonials avatars, team, media library, MediaPicker, etc.) once an admin uploads via /api/media/upload. Verified: `curl https://<host>/uploads/anything.webp` returns 200 with content-type text/html; `curl http://localhost:8001/uploads/<real>.webp` returns 200 with valid RIFF/WEBP bytes. Fix options: (a) change UPLOAD_DIR mount to /api/uploads AND change stored URLs from /uploads/... to /api/uploads/...; (b) proxy /uploads via FastAPI /api/media/file/{filename} endpoint returning FileResponse; (c) update ingress to route /uploads/* to backend.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Admin media library / any page using uploaded images",
+        "issue": "Because /uploads is unreachable via public URL (see backend critical), any newly-uploaded WebP shows as broken image tag. Existing project/blog/testimonial images work only because their image_url values are external CDN URLs (Unsplash etc.), not /uploads paths.",
+        "affected_selectors": ["admin-media-card-*", "admin-media-grid", "media-picker-item-*", "ImageFrame across public pages"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration5.py",
+    "/app/test_reports/pytest/iter5.xml"
+  ],
+  "action_items": [
+    "CRITICAL: Serve uploaded media through an /api-prefixed route so ingress reaches the backend. Recommended minimal fix: mount StaticFiles at /api/uploads (`app.mount('/api/uploads', StaticFiles(directory=str(UPLOAD_DIR)), name='uploads')`) AND change stored item['url'] in upload_media() from `/uploads/{filename}` to `/api/uploads/{filename}`. Existing DB rows can be migrated with a one-off `updateMany` on db.media.",
+    "Consider seeding a real 'react-cms-pro' project slug OR update the review-request/tests to use existing slugs (shoreline-cabin used in iteration_5 tests).",
+    "Enquiry toast: not deterministically re-tested because polling interval is 45s. Code review confirms wiring in AdminLayout with useRef delta tracker and setInterval(load, 45000), data-testid=admin-enquiry-toast, click navigates to /admin/inbox. Best-effort UI test skipped due to time. Main agent can self-verify by posting to /api/contact while logged in and waiting <=45s."
+  ],
+  "critical_code_review_comments": [
+    "server.py upload_media stores url as /uploads/... which is inaccessible via public ingress; must be /api/uploads/... (critical, see above).",
+    "server.py upload_media: image.verify() consumes the stream and PIL requires re-opening, which is done — good.",
+    "RichTextEditor uses deprecated document.execCommand which is broadly supported but marked deprecated; acceptable for MVP but noted for future upgrade.",
+    "AdminLayout enquiry-toast polls /dashboard every 45s — heavy for a full dashboard payload; could use a lightweight /api/inbox/unread-count endpoint instead.",
+    "/api/projects/{slug}/related — testimonial can be null if no featured testimonial exists; frontend RelatedContent handles null. OK."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration5.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "90% (RTE, related, media grid verified; enquiry toast not timing-verified; media image URLs return SPA HTML — critical infra bug)"},
+  "test_credentials": "admin@studiovoxel.co / VoxelAdmin2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "During RTE UI test the seeded post 'making-room-for-the-good-stuff' content was inadvertently modified while typing/applying bold+H2 in the modal. It was RESTORED to its original plain-text content via PUT /api/blog/{id} at the end of testing.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend tests live in /app/backend/tests/test_iteration5.py. External URL does NOT route /uploads to backend — always hit http://localhost:8001/uploads/... internally when verifying static file serving until routing is fixed. Real project slugs: house-for-a-long-summer, the-courtyard-office, shoreline-cabin (no react-cms-pro slug seeded).",
+  "rca of the issue": "Uploaded WebP files inaccessible externally — Root cause: FastAPI mounts /uploads via StaticFiles at line 52 of server.py, but Kubernetes ingress rewrites only /api/* to port 8001; anything else (including /uploads) is served by the CRA frontend on port 3000, which returns index.html for unknown paths. Reproduction: POST /api/media/upload with a valid JPG (admin auth) — response url is /uploads/<uuid>.webp. GET https://react-cms-pro.preview.emergentagent.com/uploads/<uuid>.webp returns 200 text/html (React SPA), not the WebP. Mitigation: mount the static directory under an /api-prefixed path and rewrite item['url'] accordingly."
+}
